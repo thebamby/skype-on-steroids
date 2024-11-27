@@ -21,60 +21,8 @@
   let openedChatTitle = null;
   let isEditing = false;
   const maxAttempts = 30;
+  const originalOpen = XMLHttpRequest.prototype.open;
 
-
-    const originalOpen = XMLHttpRequest.prototype.open;
-    XMLHttpRequest.prototype.open = function (method, url, ...rest) {
-        if (url.includes('/progress')) {
-            this.addEventListener('load', function () {
-                try {
-                    console.log(Notification.permission)
-                  if (Notification.permission === 'granted') {
-                      new Notification('Příchozí hovor', {
-                          body: 'Máte hovor na skype.'
-                      });
-                  } else {
-                      Notification.requestPermission().then(permission => {
-                          if (permission === 'granted') {
-                              new Notification('Příchozí hovor', {
-                                  body: 'Máte hovor na skype',
-                              });
-                          }
-                      });
-}
-
-                    // Start blinking title
-                    let originalTitle = document.title;
-                    let isBlinking = false;
-                    setInterval(() => {
-                        if (isBlinking) {
-                            document.title = originalTitle;
-                        } else {
-                            document.title = "📞 Příchozí hovor!";
-                        }
-                        isBlinking = !isBlinking;
-                    }, 1000);
-
-
-
-                } catch (e) {
-
-                    console.error("Chyba při zpracování odpovědi:", e);
-                }
-            });
-
-            this.addEventListener('error', function () {
-                console.error("Došlo k chybě při zpracování požadavku.");
-            });
-
-            this.addEventListener('timeout', function () {
-                console.error("Požadavek vypršel.");
-            });
-        }
-
-        // Zavolání původního `open`
-        originalOpen.call(this, method, url, ...rest);
-    };
 
   setTimeout(() => {
     try {
@@ -110,8 +58,8 @@
 
       document.querySelector("body").appendChild(mainPanel);
 
-
-
+      runUnreadChatsTrigger();
+      handleNotification();
     } catch (ex) {
       debugger;
     }
@@ -262,9 +210,18 @@
     return chatList;
   }
 
+  function runUnreadChatsTrigger(timeout=5000) {
+      setTimeout(() => {
+          countUnreadedChats();
+          runUnreadChatsTrigger(60000);
+      }, timeout);
+  }
   function countUnreadedChats() {
       try {
           event.preventDefault();
+           document.querySelectorAll('.SONS_section_count, .SONS_item_count').forEach(function(element) {
+               element.remove();
+           });
           const unreadedMessageList = [];
           const viewport = document.querySelector('.scrollViewport.scrollViewportV');
           if(viewport) {
@@ -311,12 +268,14 @@
                       if(exists) {
                           //console.log('Nalezl jsem shodu ' + foundItem + "("+foundUnreadedMessagesCount+")");
                           sectionGroupCount = sectionGroupCount + foundUnreadedMessagesCount;
-                          link.append(' ('+foundUnreadedMessagesCount+')');
+                          if(foundUnreadedMessagesCount.toString() !== "NaN") {
+                              link.insertAdjacentHTML('afterend', '<div class="SONS_item_count">'+foundUnreadedMessagesCount+'</div>');
+                          }
                       }
 
                   });
                   //console.log("total v kategorii "+ sectionGroupCount);
-                  if(sectionGroupCount > 0) {
+                  if(sectionGroupCount > 0 && sectionGroupCount !== NaN) {
                       section.querySelectorAll('.SONS_section_name')[0].insertAdjacentHTML('afterend', '<div class="SONS_section_count">'+sectionGroupCount+'</div>');
                   }
               });
@@ -342,6 +301,10 @@
     var element = document.querySelector("[data-text-as-pseudo-element='" + name + "']");
     if (element) {
       element.click();
+      setTimeout(() => {
+          countUnreadedChats();
+        }, 3000);
+
     } else if (attempt > 0) {
       const contactPanel = document.querySelector(".scrollViewport.scrollViewportV");
       if (contactPanel) {
@@ -444,14 +407,71 @@
   }
 
   function createChatButton(text, section) {
+    const linkWrapper = document.createElement("span");
+    linkWrapper.classList.add("link_wrapper");
     const link = document.createElement("a");
     link.innerText = text;
     link.classList.add("link_item");
     link.href = "#";
     link.addEventListener("click", goToChat(link));
-    section.appendChild(link);
+    linkWrapper.append(link);
+    section.appendChild(linkWrapper);
   }
 
+  function handleNotification() {
+       XMLHttpRequest.prototype.open = function (method, url, ...rest) {
+        if (url.includes('/progress')) {
+            this.addEventListener('load', function () {
+                try {
+                    console.log(Notification.permission)
+                  if (Notification.permission === 'granted') {
+                      new Notification('Příchozí hovor', {
+                          body: 'Máte hovor na skype.'
+                      });
+                  } else {
+                      Notification.requestPermission().then(permission => {
+                          if (permission === 'granted') {
+                              new Notification('Příchozí hovor', {
+                                  body: 'Máte hovor na skype',
+                              });
+                          }
+                      });
+}
+
+                    // Start blinking title
+                    let originalTitle = document.title;
+                    let isBlinking = false;
+                    setInterval(() => {
+                        if (isBlinking) {
+                            document.title = originalTitle;
+                        } else {
+                            document.title = "📞 Příchozí hovor!";
+                        }
+                        isBlinking = !isBlinking;
+                    }, 1000);
+
+
+
+                } catch (e) {
+
+                    console.error("Chyba při zpracování odpovědi:", e);
+                }
+            });
+
+            this.addEventListener('error', function () {
+                console.error("Došlo k chybě při zpracování požadavku.");
+            });
+
+            this.addEventListener('timeout', function () {
+                console.error("Požadavek vypršel.");
+            });
+        }
+
+        // Zavolání původního `open`
+        originalOpen.call(this, method, url, ...rest);
+    };
+
+  }
   GM.addStyle(`
     .app-container{
       padding-right: 300px;
@@ -523,7 +543,9 @@
 
     .SONS_section_chatlist a {
       margin-left: 1.2em;
+      float: left;
       display: block;
+      width: 80%;
     }
     .SONS_section_chatlist a:hover {
       font-weight: bold;
@@ -547,7 +569,7 @@
       opacity: 1;
       cursor: pointer;
     }
-    .SONS_editor{
+    .SONS_editor {
       height: calc(100vh - 50px);
       box-shadow: 2px 2px 4px #00000033 inset;
       padding: 10px 6px;
@@ -579,6 +601,10 @@
       color: white;
       margin-left: 5px;
       font-size: 13px;
+    }
+    .SONS_item_count {
+      float: left;
+      display: block;
     }
     a.SONS_add_to_section {
       margin-left: 5px;
