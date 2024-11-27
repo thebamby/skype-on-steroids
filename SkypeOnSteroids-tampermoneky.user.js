@@ -16,10 +16,65 @@
   let mainPanel;
   let editButton;
   let hideButton;
+  let countChatButton;
   let chatListPanel;
   let openedChatTitle = null;
   let isEditing = false;
   const maxAttempts = 30;
+
+
+    const originalOpen = XMLHttpRequest.prototype.open;
+    XMLHttpRequest.prototype.open = function (method, url, ...rest) {
+        if (url.includes('/progress')) {
+            this.addEventListener('load', function () {
+                try {
+                    console.log(Notification.permission)
+                  if (Notification.permission === 'granted') {
+                      new Notification('Příchozí hovor', {
+                          body: 'Máte hovor na skype.'
+                      });
+                  } else {
+                      Notification.requestPermission().then(permission => {
+                          if (permission === 'granted') {
+                              new Notification('Příchozí hovor', {
+                                  body: 'Máte hovor na skype',
+                              });
+                          }
+                      });
+}
+
+                    // Start blinking title
+                    let originalTitle = document.title;
+                    let isBlinking = false;
+                    setInterval(() => {
+                        if (isBlinking) {
+                            document.title = originalTitle;
+                        } else {
+                            document.title = "📞 Příchozí hovor!";
+                        }
+                        isBlinking = !isBlinking;
+                    }, 1000);
+
+
+
+                } catch (e) {
+
+                    console.error("Chyba při zpracování odpovědi:", e);
+                }
+            });
+
+            this.addEventListener('error', function () {
+                console.error("Došlo k chybě při zpracování požadavku.");
+            });
+
+            this.addEventListener('timeout', function () {
+                console.error("Požadavek vypršel.");
+            });
+        }
+
+        // Zavolání původního `open`
+        originalOpen.call(this, method, url, ...rest);
+    };
 
   setTimeout(() => {
     try {
@@ -42,10 +97,21 @@
       editButton.href = "#";
       editButton.addEventListener("click", openEditor);
 
+      countChatButton = document.createElement("a");
+      countChatButton.classList.add("SONS_count_button");
+      countChatButton.title = "Count";
+      countChatButton.innerText = "🔄";
+      countChatButton.href = "#";
+      countChatButton.addEventListener("click", countUnreadedChats);
+
       mainPanel.appendChild(editButton);
       mainPanel.appendChild(hideButton);
+      mainPanel.appendChild(countChatButton);
 
       document.querySelector("body").appendChild(mainPanel);
+
+
+
     } catch (ex) {
       debugger;
     }
@@ -196,6 +262,71 @@
     return chatList;
   }
 
+  function countUnreadedChats() {
+      try {
+          event.preventDefault();
+          const unreadedMessageList = [];
+          const viewport = document.querySelector('.scrollViewport.scrollViewportV');
+          if(viewport) {
+              const listItems = viewport.querySelectorAll('[role="listitem"]');
+
+              listItems.forEach(item => {
+                  let ariaLabel = item.getAttribute('aria-label');
+                  if (ariaLabel && ariaLabel.includes("oblíbené,")) {
+                    ariaLabel = ariaLabel.replace("oblíbené,", "").trim();
+                  }
+
+                  let name = '';
+                  const commaIndex = ariaLabel.indexOf(',');
+                  if (commaIndex !== -1) {
+                      name = ariaLabel.substring(0, commaIndex).trim();
+                  }
+                  const numberElement = item.querySelector('div.css-901oao');
+                  const number = numberElement?.textContent?.trim();
+
+                  if (name && number) {
+                      unreadedMessageList.push({ [name]: parseInt(number, 10) });
+                  }
+              });
+              console.log(unreadedMessageList)
+              let sectionGroupCount = 0;
+              document.querySelectorAll('.SONS_section').forEach(section => {
+                  sectionGroupCount = 0;
+                  const sectionName = section.querySelector('.SONS_section_name').textContent.trim();  //  document.querySelectorAll('.SONS_section')[0].querySelector('.SONS_section_name').textContent.trim()
+                  //  document.querySelectorAll('.SONS_section')[0].querySelectorAll('.link_item')[0].textContent.trim()
+                  section.querySelectorAll('.link_item').forEach(link => {
+                      let linkText = link.textContent.trim();
+                      //console.log("Iteruji itemy "+linkText);
+                      let foundItem = null;
+                      let foundUnreadedMessagesCount = 0;
+                      const exists = unreadedMessageList.some(item => {
+                          if(Object.keys(item).some(key => key.startsWith(linkText))) {
+                              foundItem = Object.keys(item)[0];
+                              foundUnreadedMessagesCount = Number(item[foundItem]);
+                              return true;
+                          } else {
+                              return false;
+                          }
+                      });
+                      if(exists) {
+                          //console.log('Nalezl jsem shodu ' + foundItem + "("+foundUnreadedMessagesCount+")");
+                          sectionGroupCount = sectionGroupCount + foundUnreadedMessagesCount;
+                          link.append(' ('+foundUnreadedMessagesCount+')');
+                      }
+
+                  });
+                  //console.log("total v kategorii "+ sectionGroupCount);
+                  if(sectionGroupCount > 0) {
+                      section.querySelectorAll('.SONS_section_name')[0].insertAdjacentHTML('afterend', '<div class="SONS_section_count">'+sectionGroupCount+'</div>');
+                  }
+              });
+
+          }
+      } catch (ex) {
+      debugger;
+    }
+  }
+
   function goToChat(link) {
     return (event) => {
       try {
@@ -315,6 +446,7 @@
   function createChatButton(text, section) {
     const link = document.createElement("a");
     link.innerText = text;
+    link.classList.add("link_item");
     link.href = "#";
     link.addEventListener("click", goToChat(link));
     section.appendChild(link);
@@ -402,6 +534,12 @@
       top: 5px;
       opacity: 0.5;
     }
+    .SONS_count_button {
+      position: absolute;
+      left: 10px;
+      top: 5px;
+      opacity: 0.5;
+    }
     .SONS_hide_button {
       position: absolute;
       left: -5px;
@@ -430,6 +568,17 @@
       font-weight: bold;
       margin-top: 5px;
       cursor: pointer;
+    }
+    .SONS_section_count {
+      display: inline-block;
+      background: blue;
+      height: 19px;
+      width: 19px;
+      text-align: center;
+      border-radius: 50%;
+      color: white;
+      margin-left: 5px;
+      font-size: 13px;
     }
     a.SONS_add_to_section {
       margin-left: 5px;
