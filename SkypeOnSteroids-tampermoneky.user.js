@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         Skype on steroids
 // @namespace    http://www.bogan.cz/skype-on-steroids/
-// @version      2024-10-17-01
+// @version      2024-11-27-01
 // @description  try to take over the Skype!
-// @author       Bogan
+// @author       Bogan, Insidel
 // @match        https://web.skype.com/
 // @icon         https://secure.skypeassets.com/wcss/8-129-0-202/images/favicons/favicon.ico
 // @grant        GM.addStyle
@@ -12,17 +12,28 @@
 (function () {
   "use strict";
 
-  var mainPanel;
-  var editButton;
-  var chatListPanel;
-  var openedChatTitle = null;
-  var isEditing = false;
+  let appContainer;
+  let mainPanel;
+  let editButton;
+  let hideButton;
+  let chatListPanel;
+  let openedChatTitle = null;
+  let isEditing = false;
+  const maxAttempts = 30;
 
   setTimeout(() => {
     try {
+      appContainer = document.getElementsByClassName("app-container")[0];
       mainPanel = document.createElement("div");
       mainPanel.classList.add("SONS_panel");
       createChatListContent();
+
+      hideButton = document.createElement("a");
+      hideButton.classList.add("SONS_hide_button");
+      hideButton.title = "Hide";
+      hideButton.innerText = "➡️";
+      hideButton.href = "#";
+      hideButton.addEventListener("click", hideEditor);
 
       editButton = document.createElement("a");
       editButton.classList.add("SONS_edit_button");
@@ -30,7 +41,9 @@
       editButton.innerText = "✏️";
       editButton.href = "#";
       editButton.addEventListener("click", openEditor);
+
       mainPanel.appendChild(editButton);
+      mainPanel.appendChild(hideButton);
 
       document.querySelector("body").appendChild(mainPanel);
     } catch (ex) {
@@ -110,6 +123,30 @@
     }
   }
 
+  function hideEditor(event) {
+    try {
+      event.preventDefault();
+      if(hideButton.innerText === "➡️") {
+        hideButton.innerText = "⬅️";
+        hideButton.style = "left: -15px;"
+        editButton.style = "display: none;";
+        appContainer.style = "padding-right: 0px";
+        mainPanel.style = "width: 0px; overflow-y:unset;padding: 0 0 0 0;";
+        chatListPanel.style = "display:none;";
+      } else {
+        hideButton.innerText = "➡️";
+        hideButton.style = "left: -5px;"
+        editButton.style = "display: block;";
+        appContainer.style = "padding-right: 300px";
+        mainPanel.style = "width: 300px; overflow-y:auto;padding: 30px 11px 20px;";
+        chatListPanel.style = "display: block;";
+      }
+
+    } catch (ex) {
+      debugger;
+    }
+  }
+
   function saveEditor(saveButton, editor) {
     return () => {
       try {
@@ -163,24 +200,35 @@
     return (event) => {
       try {
         event.preventDefault();
-        openChat(link.innerText, 30);
+        openChat(link.innerText, maxAttempts);
       } catch (ex) {
         debugger;
       }
     };
   }
 
-  function openChat(name, attempt) {
+  async function openChat(name, attempt) {
     var element = document.querySelector("[data-text-as-pseudo-element='" + name + "']");
     if (element) {
       element.click();
     } else if (attempt > 0) {
       const contactPanel = document.querySelector(".scrollViewport.scrollViewportV");
       if (contactPanel) {
-        contactPanel.scrollBy(0, 10000);
+        let timeout = 300;
+        if (attempt === maxAttempts) {
+          //scroll to up by change list view
+          document.querySelector('button[role="tab"][title="Kontakty"]').click();
+          await new Promise(resolve => setTimeout(resolve, 300));
+          document.querySelector('button[role="tab"][title="Chaty"]').click();
+          await new Promise(resolve => setTimeout(resolve, 300));
+          contactPanel.scrollBy(0, 10000);
+        } else {
+          contactPanel.scrollBy(0, 10000);
+        }
+
         setTimeout(() => {
           openChat(name, attempt - 1);
-        }, 300);
+        }, timeout);
       }
     }
   }
@@ -348,14 +396,19 @@
     .SONS_section_chatlist a:hover {
       font-weight: bold;
     }
-
     .SONS_edit_button {
       position: absolute;
       right: 5px;
       top: 5px;
       opacity: 0.5;
     }
-
+    .SONS_hide_button {
+      position: absolute;
+      left: -5px;
+      top: 50%;
+      opacity: 1;
+      cursor: pointer;
+    }
     .SONS_editor{
       height: calc(100vh - 50px);
       box-shadow: 2px 2px 4px #00000033 inset;
